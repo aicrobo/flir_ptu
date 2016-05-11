@@ -48,6 +48,7 @@ float currentTiltPosition;
 float panVel;
 float tiltVel;
 float intervelTime;
+ros::Publisher jointPub;
 
 /** Callback for getting new Goal JointState */
 void cmdCallback(const sensor_msgs::JointStateConstPtr msg)
@@ -76,12 +77,53 @@ void shutdown(int sig)
   ros::shutdown();
 }
 
+void jointMove(float goalPanPosition, float goalTiltPosition)
+{
+  // Calculate position
+  float intervelPan = intervelTime * panVel;
+  float intervelTilt = intervelTime * tiltVel;
+  double pan = 0;
+  if (goalPanPosition > currentPanPosition)
+  {
+    pan = ((goalPanPosition - currentPanPosition) > intervelPan) ? currentPanPosition + intervelPan : goalPanPosition;
+  }
+  else
+  {
+    pan = ((currentPanPosition - goalPanPosition) > intervelPan) ? currentPanPosition - intervelPan : goalPanPosition;
+  }
+  double tilt = 0;
+  if (goalTiltPosition > currentTiltPosition)
+  {
+    tilt = ((goalTiltPosition - currentTiltPosition) > intervelTilt) ? currentTiltPosition + intervelTilt : goalTiltPosition;
+  }
+  else
+  {
+    tilt = ((currentTiltPosition - goalTiltPosition) > intervelTilt) ? currentTiltPosition - intervelTilt : goalTiltPosition;
+  }
+  currentPanPosition = pan;
+  currentTiltPosition = tilt;
+
+  // Publish Position & Speed
+  sensor_msgs::JointState joint_state;
+  joint_state.header.stamp = ros::Time::now();
+  joint_state.name.resize(2);
+  joint_state.position.resize(2);
+  joint_state.velocity.resize(2);
+  joint_state.name[0] = "ptu_pan";
+  joint_state.position[0] = pan;
+  joint_state.velocity[0] = panVel;
+  joint_state.name[1] = "ptu_tilt";
+  joint_state.position[1] = tilt;
+  joint_state.velocity[1] = tiltVel;
+  jointPub.publish(joint_state);
+}
+
 int main(int argc, char** argv)
 {
   ros::init(argc, argv, "aicrobo_ptu");
   ros::NodeHandle nh;
   ros::NodeHandle ph("~");
-  ros::Publisher jointPub = nh.advertise<sensor_msgs::JointState>("joint_states", 1);
+  jointPub = nh.advertise<sensor_msgs::JointState>("joint_states", 1);
   ros::Subscriber jointSub = nh.subscribe("cmd", 1, cmdCallback);
   signal(SIGINT, shutdown);
   ROS_INFO("aicrobo_ptu start...");
@@ -115,45 +157,11 @@ int main(int argc, char** argv)
   // On while
   ros::Rate rate(hz);
   intervelTime = 1.0 / hz;
+  ptu->home();
+  jointMove(0, 0);
   while (ros::ok())
   {
-    // Calculate position
-    float intervelPan = intervelTime * panVel;
-    float intervelTilt = intervelTime * tiltVel;
-    double pan = 0;
-    if (goalPanPosition > currentPanPosition)
-    {
-      pan = ((goalPanPosition - currentPanPosition) > intervelPan) ? currentPanPosition + intervelPan : goalPanPosition;
-    }
-    else
-    {
-      pan = ((currentPanPosition - goalPanPosition) > intervelPan) ? currentPanPosition - intervelPan : goalPanPosition;
-    }
-    double tilt = 0;
-    if (goalTiltPosition > currentTiltPosition)
-    {
-      tilt = ((goalTiltPosition - currentTiltPosition) > intervelTilt) ? currentTiltPosition + intervelTilt : goalTiltPosition;
-    }
-    else
-    {
-      tilt = ((currentTiltPosition - goalTiltPosition) > intervelTilt) ? currentTiltPosition - intervelTilt : goalTiltPosition;
-    }
-    currentPanPosition = pan;
-    currentTiltPosition = tilt;
-
-    // Publish Position & Speed
-    sensor_msgs::JointState joint_state;
-    joint_state.header.stamp = ros::Time::now();
-    joint_state.name.resize(2);
-    joint_state.position.resize(2);
-    joint_state.velocity.resize(2);
-    joint_state.name[0] = "ptu_pan";
-    joint_state.position[0] = pan;
-    joint_state.velocity[0] = panVel;
-    joint_state.name[1] = "ptu_tilt";
-    joint_state.position[1] = tilt;
-    joint_state.velocity[1] = tiltVel;
-    jointPub.publish(joint_state);
+    jointMove(goalPanPosition, goalTiltPosition);
 
     ros::spinOnce();
     rate.sleep();
