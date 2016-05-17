@@ -64,7 +64,7 @@ public:
    * \param ser serial::Serial instance ready to communciate with device.
    */
   explicit PTU(serial::Serial* ser) :
-    ser_(ser), initialized_(false)
+      ser_(ser)
   {
   }
 
@@ -73,18 +73,6 @@ public:
 
   /** \return true if the serial port is open and PTU initialized. */
   bool initialized();
-
-  /**
-   * \param type 'p' or 't'
-   * \return position in radians
-   */
-  float getPosition(char type);
-
-  /**
-   * \param type 'p' or 't'
-   * \return speed in radians/second
-   */
-  float getSpeed(char type);
 
   /**
    * \param type 'p' or 't'
@@ -136,7 +124,7 @@ public:
    * \param pos desired position in radians
    * \param Block block until ready
    * \return True if successfully sent command
-  */
+   */
   bool setPosition(char type, float pos, bool Block = false);
 
   /**
@@ -144,7 +132,7 @@ public:
    * \param type 'p' or 't'
    * \param speed desired speed in radians/second
    * \return True if successfully sent command
-  */
+   */
   bool setSpeed(char type, float speed);
 
   /**
@@ -154,40 +142,20 @@ public:
    */
   bool setMode(char type);
 
-  /**
-   * get the control mode, position or velocity
-   * \return 'v' for velocity, 'i' for position
-   */
-  char getMode();
-
   bool home();
 
 private:
-  /** get radian/count resolution
-   * \param type 'p' or 't'
-   * \return pan resolution if type=='p', tilt resolution if type=='t'
-   */
-  float getRes(char type);
-
-  /** get limiting position/speed in counts or counts/second
-   *
-   * \param type 'p' or 't' (pan or tilt)
-   * \param limType {'n', 'x', 'l', 'u'} (min position, max position, min speed, max speed)
-   * \return limiting position/speed
-   */
-  int getLimit(char type, char limType);
-
   // Position Limits
-  int TMin;  ///< Min Tilt in Counts
-  int TMax;  ///< Max Tilt in Counts
-  int PMin;  ///< Min Pan in Counts
-  int PMax;  ///< Max Pan in Counts
+  int TMin; ///< Min Tilt in Counts
+  int TMax; ///< Max Tilt in Counts
+  int PMin; ///< Min Pan in Counts
+  int PMax; ///< Max Pan in Counts
 
   // Speed Limits
-  int TSMin;  ///< Min Tilt Speed in Counts/second
-  int TSMax;  ///< Max Tilt Speed in Counts/second
-  int PSMin;  ///< Min Pan Speed in Counts/second
-  int PSMax;  ///< Max Pan Speed in Counts/second
+  int TSMin; ///< Min Tilt Speed in Counts/second
+  int TSMax; ///< Max Tilt Speed in Counts/second
+  int PSMin; ///< Min Pan Speed in Counts/second
+  int PSMax; ///< Max Pan Speed in Counts/second
 
 protected:
   /** Sends a string to the PTU
@@ -198,10 +166,9 @@ protected:
   std::string sendCommand(std::string command);
 
   serial::Serial* ser_;
-  bool initialized_;
 
-  float tr;  ///< tilt resolution (rads/count)
-  float pr;  ///< pan resolution (rads/count)
+  float tr; ///< tilt resolution (rads/count)
+  float pr; ///< pan resolution (rads/count)
 };
 
 }  // namespace flir_ptu_driver

@@ -1,4 +1,7 @@
 /*
+ * Something wrong with our E46, there is no feedback, so we make a fake feedback...
+ * Copyright (C) 2016 Yuanbo She (yuanboshe@aicrobo.com)
+ *
  * flir_ptu_driver ROS package
  * Copyright (C) 2014 Mike Purvis (mpurvis@clearpathrobotics.com)
  *
@@ -28,149 +31,31 @@
  *
  */
 
-#include <diagnostic_updater/diagnostic_updater.h>
-#include <diagnostic_updater/publisher.h>
 #include <flir_ptu_driver/driver.h>
 #include <ros/ros.h>
 #include <sensor_msgs/JointState.h>
 #include <serial/serial.h>
-
+#include <pthread.h>
+#include <signal.h>
 #include <string>
 
-namespace flir_ptu_driver
-{
+using namespace flir_ptu_driver;
 
-class Node
-{
-public:
-  explicit Node(ros::NodeHandle& node_handle);
-  ~Node();
+PTU* ptu;
+float goalPanPosition;
+float goalTiltPosition;
+float currentPanPosition;
+float currentTiltPosition;
+float panVel;
+float tiltVel;
+ros::Publisher jointPub;
 
-  // Service Control
-  void connect();
-  bool ok()
-  {
-    return m_pantilt != NULL;
-  }
-  void disconnect();
-
-  // Service Execution
-  void spinCallback(const ros::TimerEvent&);
-
-  // Callback Methods
-  void cmdCallback(const sensor_msgs::JointState::ConstPtr& msg);
-
-  void produce_diagnostics(diagnostic_updater::DiagnosticStatusWrapper &stat);
-
-protected:
-  diagnostic_updater::Updater* m_updater;
-  PTU* m_pantilt;
-  ros::NodeHandle m_node;
-  ros::Publisher  m_joint_pub;
-  ros::Subscriber m_joint_sub;
-
-  serial::Serial m_ser;
-  std::string m_joint_name_prefix;
-};
-
-Node::Node(ros::NodeHandle& node_handle)
-  : m_pantilt(NULL), m_node(node_handle)
-{
-  m_updater = new diagnostic_updater::Updater();
-  m_updater->setHardwareID("none");
-  m_updater->add("PTU Status", this, &Node::produce_diagnostics);
-
-  ros::param::param<std::string>("~joint_name_prefix", m_joint_name_prefix, "ptu_");
-}
-
-Node::~Node()
-{
-  disconnect();
-  delete m_updater;
-}
-
-/** Opens the connection to the PTU and sets appropriate parameters.
-    Also manages subscriptions/publishers */
-void Node::connect()
-{
-  // If we are reconnecting, first make sure to disconnect
-  if (ok())
-  {
-    disconnect();
-  }
-
-  // Query for serial configuration
-  std::string port;
-  int32_t baud;
-  ros::param::param<std::string>("~port", port, PTU_DEFAULT_PORT);
-  ros::param::param<int32_t>("~baud", baud, PTU_DEFAULT_BAUD);
-
-  // Connect to the PTU
-  ROS_INFO_STREAM("Attempting to connect to FLIR PTU on " << port);
-
-  try
-  {
-    m_ser.setPort(port);
-    m_ser.setBaudrate(baud);
-    serial::Timeout to = serial::Timeout(200, 200, 0, 200, 0);
-    m_ser.setTimeout(to);
-    m_ser.open();
-  }
-  catch (serial::IOException& e)
-  {
-    ROS_ERROR_STREAM("Unable to open port " << port);
-    return;
-  }
-
-  ROS_INFO_STREAM("FLIR PTU serial port opened, now initializing.");
-
-  m_pantilt = new PTU(&m_ser);
-
-  if (!m_pantilt->initialize())
-  {
-    ROS_ERROR_STREAM("Could not initialize FLIR PTU on " << port);
-    disconnect();
-    return;
-  }
-
-  ROS_INFO("FLIR PTU initialized.");
-
-  m_node.setParam("min_tilt", m_pantilt->getMin(PTU_TILT));
-  m_node.setParam("max_tilt", m_pantilt->getMax(PTU_TILT));
-  m_node.setParam("min_tilt_speed", m_pantilt->getMinSpeed(PTU_TILT));
-  m_node.setParam("max_tilt_speed", m_pantilt->getMaxSpeed(PTU_TILT));
-  m_node.setParam("tilt_step", m_pantilt->getResolution(PTU_TILT));
-
-  m_node.setParam("min_pan", m_pantilt->getMin(PTU_PAN));
-  m_node.setParam("max_pan", m_pantilt->getMax(PTU_PAN));
-  m_node.setParam("min_pan_speed", m_pantilt->getMinSpeed(PTU_PAN));
-  m_node.setParam("max_pan_speed", m_pantilt->getMaxSpeed(PTU_PAN));
-  m_node.setParam("pan_step", m_pantilt->getResolution(PTU_PAN));
-
-  // Publishers : Only publish the most recent reading
-  m_joint_pub = m_node.advertise
-                <sensor_msgs::JointState>("state", 1);
-
-  // Subscribers : Only subscribe to the most recent instructions
-  m_joint_sub = m_node.subscribe
-                <sensor_msgs::JointState>("cmd", 1, &Node::cmdCallback, this);
-}
-
-/** Disconnect */
-void Node::disconnect()
-{
-  if (m_pantilt != NULL)
-  {
-    delete m_pantilt;   // Closes the connection
-    m_pantilt = NULL;   // Marks the service as disconnected
-  }
-}
-
-/** Callback for getting new Goal JointState */
-void Node::cmdCallback(const sensor_msgs::JointState::ConstPtr& msg)
+/**
+ * Response the control command.
+ */
+void cmdCallback(const sensor_msgs::JointStateConstPtr msg)
 {
   ROS_DEBUG("PTU command callback.");
-  if (!ok()) return;
 
   if (msg->position.size() != 2 || msg->velocity.size() != 2)
   {
@@ -178,83 +63,112 @@ void Node::cmdCallback(const sensor_msgs::JointState::ConstPtr& msg)
     return;
   }
 
-  double pan = msg->position[0];
-  double tilt = msg->position[1];
-  double panspeed = msg->velocity[0];
-  double tiltspeed = msg->velocity[1];
-  m_pantilt->setPosition(PTU_PAN, pan);
-  m_pantilt->setPosition(PTU_TILT, tilt);
-  m_pantilt->setSpeed(PTU_PAN, panspeed);
-  m_pantilt->setSpeed(PTU_TILT, tiltspeed);
+  goalPanPosition = msg->position[0];
+  goalTiltPosition = msg->position[1];
+  panVel = msg->velocity[0];
+  tiltVel = msg->velocity[1];
+  ptu->setPosition(PTU_PAN, goalPanPosition);
+  ptu->setPosition(PTU_TILT, goalTiltPosition);
+  ptu->setSpeed(PTU_PAN, panVel);
+  ptu->setSpeed(PTU_TILT, tiltVel);
 }
 
-void Node::produce_diagnostics(diagnostic_updater::DiagnosticStatusWrapper &stat)
+void shutdown(int sig)
 {
-  stat.summary(diagnostic_msgs::DiagnosticStatus::OK, "All normal.");
-  stat.add("PTU Mode", m_pantilt->getMode() == PTU_POSITION ? "Position" : "Velocity");
+  ROS_INFO("aicrobo_ptu ended!");
+  ros::shutdown();
 }
-
 
 /**
- * Publishes a joint_state message with position and speed.
- * Also sends out updated TF info.
+ * Thread. If I put it into main(), it cann't loop within 10 Hz, maybe 2~8 Hz.
  */
-void Node::spinCallback(const ros::TimerEvent&)
+void* jointMove(void* param)
 {
-  if (!ok()) return;
+  while (ros::ok())
+  {
+    ros::Rate rate(10);
 
-  // Read Position & Speed
-  double pan  = m_pantilt->getPosition(PTU_PAN);
-  double tilt = m_pantilt->getPosition(PTU_TILT);
+    // Calculate position
+    float intervelPan = 0.1 * panVel;
+    float intervelTilt = 0.1 * tiltVel;
+    double pan = 0;
+    if (goalPanPosition > currentPanPosition)
+    {
+      pan = ((goalPanPosition - currentPanPosition) > intervelPan) ? currentPanPosition + intervelPan : goalPanPosition;
+    }
+    else
+    {
+      pan = ((currentPanPosition - goalPanPosition) > intervelPan) ? currentPanPosition - intervelPan : goalPanPosition;
+    }
+    double tilt = 0;
+    if (goalTiltPosition > currentTiltPosition)
+    {
+      tilt = ((goalTiltPosition - currentTiltPosition) > intervelTilt) ? currentTiltPosition + intervelTilt : goalTiltPosition;
+    }
+    else
+    {
+      tilt = ((currentTiltPosition - goalTiltPosition) > intervelTilt) ? currentTiltPosition - intervelTilt : goalTiltPosition;
+    }
+    currentPanPosition = pan;
+    currentTiltPosition = tilt;
 
-  double panspeed  = m_pantilt->getSpeed(PTU_PAN);
-  double tiltspeed = m_pantilt->getSpeed(PTU_TILT);
-
-  // Publish Position & Speed
-  sensor_msgs::JointState joint_state;
-  joint_state.header.stamp = ros::Time::now();
-  joint_state.name.resize(2);
-  joint_state.position.resize(2);
-  joint_state.velocity.resize(2);
-  joint_state.name[0] = m_joint_name_prefix + "pan";
-  joint_state.position[0] = pan;
-  joint_state.velocity[0] = panspeed;
-  joint_state.name[1] = m_joint_name_prefix + "tilt";
-  joint_state.position[1] = tilt;
-  joint_state.velocity[1] = tiltspeed;
-  m_joint_pub.publish(joint_state);
-
-  m_updater->update();
+    // Publish Position & Speed
+    sensor_msgs::JointState joint_state;
+    joint_state.header.stamp = ros::Time::now();
+    joint_state.name.resize(2);
+    joint_state.position.resize(2);
+    joint_state.velocity.resize(2);
+    joint_state.name[0] = "ptu_pan";
+    joint_state.position[0] = pan;
+    joint_state.velocity[0] = panVel;
+    joint_state.name[1] = "ptu_tilt";
+    joint_state.position[1] = tilt;
+    joint_state.velocity[1] = tiltVel;
+    jointPub.publish(joint_state);
+    rate.sleep();
+  }
 }
-
-}  // namespace flir_ptu_driver
 
 int main(int argc, char** argv)
 {
-  ros::init(argc, argv, "ptu");
-  ros::NodeHandle n;
+  ros::init(argc, argv, "aicrobo_ptu");
+  ros::NodeHandle nh;
+  ros::NodeHandle ph("~");
+  jointPub = nh.advertise<sensor_msgs::JointState>("joint_states", 1);
+  ros::Subscriber jointSub = nh.subscribe("cmd", 1, cmdCallback);
+  signal(SIGINT, shutdown);
+  ROS_INFO("aicrobo_ptu start...");
 
-  while (ros::ok())
+  // Get params
+  std::string port = ph.param<std::string>("port", PTU_DEFAULT_PORT);
+  int32_t baud = ph.param("baud", PTU_DEFAULT_BAUD);
+
+  // Connect to PTU with serial
+  serial::Serial serial(port, baud, serial::Timeout::simpleTimeout(1000));
+  if (!serial.isOpen())
   {
-    // Connect to PTU
-    flir_ptu_driver::Node ptu_node(n);
-    ptu_node.connect();
-
-    // Set up polling callback
-    int hz;
-    ros::param::param<int>("~hz", hz, PTU_DEFAULT_HZ);
-    ros::Timer spin_timer = n.createTimer(ros::Duration(1 / hz),
-        &flir_ptu_driver::Node::spinCallback, &ptu_node);
-
-    // Spin until there's a problem or we're in shutdown
-    ros::spin();
-
-    if (!ptu_node.ok())
-    {
-      ROS_ERROR("FLIR PTU disconnected, attempting reconnection.");
-      ros::Duration(1.0).sleep();
-    }
+    ROS_ERROR_STREAM("Unable to open port " << port);
   }
+
+  ROS_INFO_STREAM("FLIR PTU serial port opened, now initializing.");
+  ptu = new PTU(&serial);
+  if (!ptu->initialize())
+  {
+    ROS_ERROR_STREAM("Could not initialize FLIR PTU on " << port);
+    return 0;
+  }
+  ROS_INFO("FLIR PTU initialized.");
+
+  // Thread
+  pthread_t tid;
+  int ret = pthread_create(&tid, NULL, jointMove, (void*)NULL);
+  if (ret != 0)
+  {
+    ROS_ERROR("pthread_create error:error_code [%d]", ret);
+  }
+
+  ptu->home(); //Pan-tilt reset
+  ros::spin();
 
   return 0;
 }
