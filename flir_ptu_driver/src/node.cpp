@@ -1,5 +1,5 @@
 /*
- * For E46 with none response
+ * Something wrong with our E46, there is no feedback, so we make a fake feedback...
  * Copyright (C) 2016 Yuanbo She (yuanboshe@aicrobo.com)
  *
  * flir_ptu_driver ROS package
@@ -35,6 +35,7 @@
 #include <ros/ros.h>
 #include <sensor_msgs/JointState.h>
 #include <serial/serial.h>
+#include <pthread.h>
 #include <signal.h>
 #include <string>
 
@@ -47,10 +48,11 @@ float currentPanPosition;
 float currentTiltPosition;
 float panVel;
 float tiltVel;
-float intervelTime;
 ros::Publisher jointPub;
 
-/** Callback for getting new Goal JointState */
+/**
+ * Response the control command.
+ */
 void cmdCallback(const sensor_msgs::JointStateConstPtr msg)
 {
   ROS_DEBUG("PTU command callback.");
@@ -77,45 +79,54 @@ void shutdown(int sig)
   ros::shutdown();
 }
 
-void jointMove(float goalPanPosition, float goalTiltPosition)
+/**
+ * Thread. If I put it into main(), it cann't loop within 10 Hz, maybe 2~8 Hz.
+ */
+void* jointMove(void* param)
 {
-  // Calculate position
-  float intervelPan = intervelTime * panVel;
-  float intervelTilt = intervelTime * tiltVel;
-  double pan = 0;
-  if (goalPanPosition > currentPanPosition)
+  while (ros::ok())
   {
-    pan = ((goalPanPosition - currentPanPosition) > intervelPan) ? currentPanPosition + intervelPan : goalPanPosition;
-  }
-  else
-  {
-    pan = ((currentPanPosition - goalPanPosition) > intervelPan) ? currentPanPosition - intervelPan : goalPanPosition;
-  }
-  double tilt = 0;
-  if (goalTiltPosition > currentTiltPosition)
-  {
-    tilt = ((goalTiltPosition - currentTiltPosition) > intervelTilt) ? currentTiltPosition + intervelTilt : goalTiltPosition;
-  }
-  else
-  {
-    tilt = ((currentTiltPosition - goalTiltPosition) > intervelTilt) ? currentTiltPosition - intervelTilt : goalTiltPosition;
-  }
-  currentPanPosition = pan;
-  currentTiltPosition = tilt;
+    ros::Rate rate(10);
 
-  // Publish Position & Speed
-  sensor_msgs::JointState joint_state;
-  joint_state.header.stamp = ros::Time::now();
-  joint_state.name.resize(2);
-  joint_state.position.resize(2);
-  joint_state.velocity.resize(2);
-  joint_state.name[0] = "ptu_pan";
-  joint_state.position[0] = pan;
-  joint_state.velocity[0] = panVel;
-  joint_state.name[1] = "ptu_tilt";
-  joint_state.position[1] = tilt;
-  joint_state.velocity[1] = tiltVel;
-  jointPub.publish(joint_state);
+    // Calculate position
+    float intervelPan = 0.1 * panVel;
+    float intervelTilt = 0.1 * tiltVel;
+    double pan = 0;
+    if (goalPanPosition > currentPanPosition)
+    {
+      pan = ((goalPanPosition - currentPanPosition) > intervelPan) ? currentPanPosition + intervelPan : goalPanPosition;
+    }
+    else
+    {
+      pan = ((currentPanPosition - goalPanPosition) > intervelPan) ? currentPanPosition - intervelPan : goalPanPosition;
+    }
+    double tilt = 0;
+    if (goalTiltPosition > currentTiltPosition)
+    {
+      tilt = ((goalTiltPosition - currentTiltPosition) > intervelTilt) ? currentTiltPosition + intervelTilt : goalTiltPosition;
+    }
+    else
+    {
+      tilt = ((currentTiltPosition - goalTiltPosition) > intervelTilt) ? currentTiltPosition - intervelTilt : goalTiltPosition;
+    }
+    currentPanPosition = pan;
+    currentTiltPosition = tilt;
+
+    // Publish Position & Speed
+    sensor_msgs::JointState joint_state;
+    joint_state.header.stamp = ros::Time::now();
+    joint_state.name.resize(2);
+    joint_state.position.resize(2);
+    joint_state.velocity.resize(2);
+    joint_state.name[0] = "ptu_pan";
+    joint_state.position[0] = pan;
+    joint_state.velocity[0] = panVel;
+    joint_state.name[1] = "ptu_tilt";
+    joint_state.position[1] = tilt;
+    joint_state.velocity[1] = tiltVel;
+    jointPub.publish(joint_state);
+    rate.sleep();
+  }
 }
 
 int main(int argc, char** argv)
@@ -129,18 +140,12 @@ int main(int argc, char** argv)
   ROS_INFO("aicrobo_ptu start...");
 
   // Get params
-  int hz = ph.param("hz", PTU_DEFAULT_HZ);
   std::string port = ph.param<std::string>("port", PTU_DEFAULT_PORT);
   int32_t baud = ph.param("baud", PTU_DEFAULT_BAUD);
 
-  // Connect to PTU
+  // Connect to PTU with serial
   serial::Serial serial(port, baud, serial::Timeout::simpleTimeout(1000));
-  try
-  {
-    ROS_INFO_STREAM("Attempting to connect to FLIR PTU on " << port);
-//    serial.open();
-  }
-  catch (serial::IOException& e)
+  if (!serial.isOpen())
   {
     ROS_ERROR_STREAM("Unable to open port " << port);
   }
@@ -154,18 +159,16 @@ int main(int argc, char** argv)
   }
   ROS_INFO("FLIR PTU initialized.");
 
-  // On while
-  ros::Rate rate(hz);
-  intervelTime = 1.0 / hz;
-  ptu->home();
-  jointMove(0, 0);
-  while (ros::ok())
+  // Thread
+  pthread_t tid;
+  int ret = pthread_create(&tid, NULL, jointMove, (void*)NULL);
+  if (ret != 0)
   {
-    jointMove(goalPanPosition, goalTiltPosition);
-
-    ros::spinOnce();
-    rate.sleep();
+    ROS_ERROR("pthread_create error:error_code [%d]", ret);
   }
+
+  ptu->home(); //Pan-tilt reset
+  ros::spin();
 
   return 0;
 }

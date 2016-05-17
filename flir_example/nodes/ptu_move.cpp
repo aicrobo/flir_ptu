@@ -31,32 +31,48 @@
 
 #include <ros/ros.h>
 #include <signal.h>
-#include <geometry_msgs/Twist.h>
-#include<sensor_msgs/JointState.h>
+#include <sensor_msgs/JointState.h>
 
 ros::Publisher cmdVelPub;
 
-int main(int argc, char **argv)
+void jointMove(float* position, float* velocity)
 {
-  ros::init(argc, argv, "ptu_example_move");
-  std::string topic = "/cmd";
-  ros::NodeHandle node;
-  cmdVelPub = node.advertise<sensor_msgs::JointState>(topic, 1);
-
-  ROS_INFO("ptu_example_move cpp start...");
-
   sensor_msgs::JointState joint_state;
   joint_state.header.stamp = ros::Time::now();
   joint_state.name.resize(2);
   joint_state.position.resize(2);
   joint_state.velocity.resize(2);
   joint_state.name[0] = "ptu_pan";
-  joint_state.position[0] = 1.6;
-  joint_state.velocity[0] = 0.6;
+  joint_state.position[0] = position[0];
+  joint_state.velocity[0] = velocity[0];
   joint_state.name[1] = "ptu_tilt";
-  joint_state.position[1] = 0.6;
-  joint_state.velocity[1] = 0.6;
+  joint_state.position[1] = position[0];
+  joint_state.velocity[1] = velocity[1];
   cmdVelPub.publish(joint_state);
+}
+
+int main(int argc, char **argv)
+{
+  ros::init(argc, argv, "ptu_example_move");
+  ros::NodeHandle node;
+  cmdVelPub = node.advertise<sensor_msgs::JointState>("/cmd", 1);
+  ros::Rate rate(10);
+
+  ROS_INFO("ptu_example_move cpp start...");
+
+  while (ros::ok())
+  {
+    float position1[2] = { 1.6, 0.6};
+    float velocity1[2] = { 0.6, 0.6};
+    jointMove(position1, velocity1);
+    sleep(7);
+    float position2[2] = { -1.6, -0.6};
+    float velocity2[2] = { 0.6, 0.6};
+    jointMove(position2, velocity2);
+    sleep(7);
+  }
+
+  ros::spin();
 
   return 0;
 }

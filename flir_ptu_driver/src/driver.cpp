@@ -1,4 +1,7 @@
 /*
+ * Something wrong with our E46, there is no feedback, so we make a fake feedback...
+ * Copyright (C) 2016 Yuanbo She (yuanboshe@aicrobo.com)
+ *
  * flir_ptu_driver ROS package
  * Copyright (C) 2014 Mike Purvis (mpurvis@clearpathrobotics.com)
  *
@@ -67,18 +70,18 @@ bool PTU::initialize()
   ser_->write("ci ");  // position mode
   ser_->read(20);
 
-  // get pan tilt encoder res
-  tr = 0.0002440;
-  pr = 0.0008976;
+  // Set pan-tilt params
+  tr = 0.0002440; //Resolution rad/count
+  pr = 0.0008976; //Resolution rad/count
 
-  PMin = -3090;
-  PMax = 3090;
-  TMin = -3620;
-  TMax = 2360;
-  PSMin = 10;
-  PSMax = 2000;
-  TSMin = 10;
-  TSMax = 2000;
+  PMin = -3090; //Pan min count (-3090*pr = -2.773584 rad = -158.9 degree)
+  PMax = 3090; //Pan max count (3090*pr = 2.773584 rad = 158.9 degree)
+  TMin = -3620; //Tilt min count (-3620*tr = -0.88328 rad = -50.6 degree)
+  TMax = 2360; //Tilt max count (2360*tr = 0.88328 rad = -50.6 degree)
+  PSMin = 10; //Pan speed min count/s
+  PSMax = 2000; //Pan speed max count/s
+  TSMin = 10; // Tilt speed min count/s
+  TSMax = 2000; //Tilt speed max count/s
 
   return initialized();
 }

@@ -30,8 +30,6 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#!/usr/bin/env python
-
 import rospy
 from sensor_msgs.msg import JointState
 
@@ -39,15 +37,10 @@ if __name__ == '__main__':
     rospy.init_node('ptu_cmd_angles')
     pub = rospy.Publisher("/cmd", JointState, queue_size=1)
     
-    
-    
     js = JointState()
     js.name = [ "ptu_pan", "ptu_tilt" ]
-    js.velocity = [ 0.6, 0.6 ]
-    js.position = [ -0.6, 0.6 ]
+    js.velocity = [0.6, 0.6]
+    js.position = [-0.6, 0.6]
     
-    #加入延时的作用是等待ros的一些准备过程，否则就是执行不成功
-    
-    rospy.sleep(1) 
+    rospy.sleep(1)  # 加入延时的作用是等待ros的一些准备过程，否则就是执行不成功
     pub.publish(js)
-        
