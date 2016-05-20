@@ -62,12 +62,12 @@ int main(int argc, char **argv)
 
   while (ros::ok())
   {
-    float position1[2] = { 1.6, 0.6};
-    float velocity1[2] = { 0.6, 0.6};
+    float position1[2] = {1.6, 0.6};
+    float velocity1[2] = {0.6, 0.6};
     jointMove(position1, velocity1);
     sleep(7);
-    float position2[2] = { -1.6, -0.6};
-    float velocity2[2] = { 0.6, 0.6};
+    float position2[2] = {-0.8, 0.5};
+    float velocity2[2] = {0.6, 0.4};
     jointMove(position2, velocity2);
     sleep(7);
   }

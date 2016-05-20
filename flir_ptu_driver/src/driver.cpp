@@ -71,17 +71,17 @@ bool PTU::initialize()
   ser_->read(20);
 
   // Set pan-tilt params
-  tr = 0.0002440; //Resolution rad/count
   pr = 0.0008976; //Resolution rad/count
+  tr = 0.0002440; //Resolution rad/count
 
   PMin = -3090; //Pan min count (-3090*pr = -2.773584 rad = -158.9 degree)
   PMax = 3090; //Pan max count (3090*pr = 2.773584 rad = 158.9 degree)
   TMin = -3620; //Tilt min count (-3620*tr = -0.88328 rad = -50.6 degree)
-  TMax = 2360; //Tilt max count (2360*tr = 0.88328 rad = -50.6 degree)
-  PSMin = 10; //Pan speed min count/s
-  PSMax = 2000; //Pan speed max count/s
-  TSMin = 10; // Tilt speed min count/s
-  TSMax = 2000; //Tilt speed max count/s
+  TMax = 2360; //Tilt max count (2360*tr = 0.57584 rad = 33.0 degree)
+  PSMin = 10; //Pan speed min count/s (10*pr = 0.008976 rad = 0.514 degree)
+  PSMax = 2000; //Pan speed max count/s (2000*pr = 1.7952 rad = 102.857 degree)
+  TSMin = 10; // Tilt speed min count/s (10*tr = 0.00244 rad = 0.1398 degree)
+  TSMax = 2000; //Tilt speed max count/s (2000*tr = 0.488 rad = 27.960 degree)
 
   return initialized();
 }
