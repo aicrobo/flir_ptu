@@ -46,7 +46,7 @@ void jointMove(float* position, float* velocity)
   joint_state.position[0] = position[0];
   joint_state.velocity[0] = velocity[0];
   joint_state.name[1] = "ptu_tilt";
-  joint_state.position[1] = position[0];
+  joint_state.position[1] = position[1];
   joint_state.velocity[1] = velocity[1];
   cmdVelPub.publish(joint_state);
 }
@@ -62,11 +62,11 @@ int main(int argc, char **argv)
 
   while (ros::ok())
   {
-    float position1[2] = {1.6, 0.6};
-    float velocity1[2] = {0.6, 0.6};
+    float position1[2] = {1.6, -0.8};
+    float velocity1[2] = {0.6, 0.4};
     jointMove(position1, velocity1);
     sleep(7);
-    float position2[2] = {-0.8, 0.5};
+    float position2[2] = {-1.6, 0.5};
     float velocity2[2] = {0.6, 0.4};
     jointMove(position2, velocity2);
     sleep(7);
